@@ -2,16 +2,16 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-#define BLOCKSIZE 100
+#define BLOCKSIZE 5
 
 
-__global__ void Reduction(float* X, int size) {
+__global__ void Reduction(float* IN, float* OUT, int size) {
 	int gindex = threadIdx.x + blockIdx.x*blockDim.x;
 	int t = threadIdx.x;
 	__shared__ float partialSum[BLOCKSIZE];
 
 
-	partialSum[t] = X[gindex];
+	partialSum[t] = IN[gindex];
 	
 	//printf("%f\n", partialSum[t]);
 	
@@ -20,13 +20,22 @@ __global__ void Reduction(float* X, int size) {
 	     __syncthreads();
 	     if ((t % (stride * 2) == 0) && ((t+stride) < blockDim.x)){
 	     	partialSum[t]+= partialSum[t+stride];
-	     	
 	     	//for the first iteration, partial sums --> t0, t2, t4...
 	    }
 	}
-	X[gindex] = partialSum[t];
-    
+	if (threadIdx.x == 0){
+		OUT[blockIdx.x] = partialSum[0];
+		printf("blockId: %d out: %f\n", blockIdx.x, partialSum[0]);
+    }
 }
+
+__global__ void single_thread(float* OUT, int numBlocks) {
+	for (int i = 1; i < numBlocks; i++){
+		printf("OUT: %f\n", OUT[i]);
+		OUT[i] += OUT[i-1];
+	}
+}
+
 
 
 double get_clock(){
@@ -38,43 +47,50 @@ double get_clock(){
 
 
 int main(void) {
-  int size; //has to be a multiple of tile_width^2
+  int size;
   printf("N: ");
   scanf("%d", &size);
-
-  float *x, *X;
-
-  x = (float*)malloc(sizeof(float) * size);
-  cudaMalloc(&X, sizeof(float)*size);
-
-
-  for (int i = 0; i < size; i++) {
-         x[i] = i;
-  }
-
-  cudaMemcpy(X, x, sizeof(float)*size, cudaMemcpyHostToDevice);
 
   int numBlocks = ceil(size/BLOCKSIZE);
   printf("num blocks %d\n", numBlocks);
 
+  float *in, *out, *IN, *OUT;
+
+  in = (float*)malloc(sizeof(float) * size);
+  out = (float*)malloc(sizeof(float) * numBlocks);
+  cudaMalloc(&IN, sizeof(float)*size);
+  cudaMalloc(&OUT, sizeof(float)*numBlocks);
+
+
+  for (int i = 0; i < size; i++) {
+         in[i] = i;
+  }
+
+  cudaMemcpy(IN, in, sizeof(float)*size, cudaMemcpyHostToDevice);
+  cudaMemcpy(OUT, out, sizeof(float)*numBlocks, cudaMemcpyHostToDevice);
+
+
   double t0 = get_clock();
-  Reduction<<<numBlocks, BLOCKSIZE>>>(X, size);
-  cudaMemcpy(x, X, sizeof(float)*size, cudaMemcpyDeviceToHost);
+  Reduction<<<numBlocks, BLOCKSIZE>>>(IN, OUT, size);
+  single_thread<<<1, 1>>>(OUT, numBlocks);
+  cudaMemcpy(out, OUT, sizeof(float)*numBlocks, cudaMemcpyDeviceToHost);
   cudaDeviceSynchronize();
   double t1 = get_clock();
 
   printf("time: %f s \n", (t1-t0));
-  printf("sum %f \n", x[0]);
+  printf("sum %f \n", out[numBlocks-1]);
   
 
   #if 0
   for (int i = 0; i < size; i++){
-  	printf("%f\n", x[i]);
+  	printf("%f\n", out[i]);
   }
   #endif
 
-  cudaFree(X);
-  free(x);
+  cudaFree(IN);
+  cudaFree(OUT);
+  free(in);
+  free(out);
  
   return 0;
 }
