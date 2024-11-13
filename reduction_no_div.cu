@@ -2,31 +2,35 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-#define BLOCKSIZE 5
+#define BLOCKSIZE 8
 
 
 __global__ void Reduction(float* IN, float* OUT, int size) {
 	int gindex = threadIdx.x + blockIdx.x*blockDim.x;
 	int t = threadIdx.x;
-	__shared__ float partialSum[BLOCKSIZE];
+	__shared__ float partialSum[BLOCKSIZE*2];
 
-
-	partialSum[t] = IN[gindex];
-	
-	//printf("%f\n", partialSum[t]);
-	
-	
-    for (int stride = 1; stride <= blockDim.x; stride *= 2){
-	     __syncthreads();
-	     if ((t % (stride * 2) == 0) && ((t+stride) < blockDim.x)){
-	     	partialSum[t]+= partialSum[t+stride];
-	     	//for the first iteration, partial sums --> t0, t2, t4...
+	if (gindex < size){
+		partialSum[t] = IN[blockIdx.x * BLOCKSIZE + t];
+		printf("global index: %d, IN: %f\n", t, partialSum[t]);
+		if ((gindex + BLOCKSIZE) < size)
+			partialSum[t + BLOCKSIZE] = IN[blockIdx.x * BLOCKSIZE + t + BLOCKSIZE];
+		
+		printf("made it into shared: %f\n", partialSum[t]);
+		
+		
+	    for (unsigned int stride = BLOCKSIZE; stride >= 1; stride /= 2) {
+		     __syncthreads();
+		     if ((t < stride) && (gindex+stride < size)){
+		     	partialSum[t] += partialSum[t+stride];
+		 	 }
+		}
+		
+		if (t == 0){
+			OUT[blockIdx.x] = partialSum[0];
+			printf("made it into OUT %f\n", partialSum[0]);
 	    }
 	}
-	if (threadIdx.x == 0){
-		OUT[blockIdx.x] = partialSum[0];
-		//printf("blockId: %d out: %f\n", blockIdx.x, partialSum[0]);
-    }
 }
 
 __global__ void single_thread(float* OUT, int numBlocks) {
@@ -64,6 +68,7 @@ int main(void) {
 
   for (int i = 0; i < size; i++) {
          in[i] = i;
+         printf("in[%d] = %f\n", i, in[i]);
   }
 
   cudaMemcpy(IN, in, sizeof(float)*size, cudaMemcpyHostToDevice);
@@ -81,11 +86,11 @@ int main(void) {
   printf("sum %f \n", out[numBlocks-1]);
   
 
-  #if 0
+  //#if 0
   for (int i = 0; i < size; i++){
   	printf("%f\n", out[i]);
   }
-  #endif
+  //#endif
 
   cudaFree(IN);
   cudaFree(OUT);
