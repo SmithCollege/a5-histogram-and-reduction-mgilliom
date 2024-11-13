@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-#define BLOCKSIZE 8
+#define BLOCKSIZE 256
 
 
 __global__ void Reduction(float* IN, float* OUT, int size) {
@@ -12,14 +12,9 @@ __global__ void Reduction(float* IN, float* OUT, int size) {
 
 	if (gindex < size){
 		partialSum[t] = IN[blockIdx.x * BLOCKSIZE + t];
-		printf("global index: %d, IN: %f\n", t, partialSum[t]);
-		if ((gindex + BLOCKSIZE) < size)
-			partialSum[t + BLOCKSIZE] = IN[blockIdx.x * BLOCKSIZE + t + BLOCKSIZE];
+		//printf("made it into shared: %f\n", partialSum[t]);
 		
-		printf("made it into shared: %f\n", partialSum[t]);
-		
-		
-	    for (unsigned int stride = BLOCKSIZE; stride >= 1; stride /= 2) {
+	    for (unsigned int stride = BLOCKSIZE / 2; stride >= 1; stride /= 2) {
 		     __syncthreads();
 		     if ((t < stride) && (gindex+stride < size)){
 		     	partialSum[t] += partialSum[t+stride];
@@ -28,7 +23,7 @@ __global__ void Reduction(float* IN, float* OUT, int size) {
 		
 		if (t == 0){
 			OUT[blockIdx.x] = partialSum[0];
-			printf("made it into OUT %f\n", partialSum[0]);
+			//printf("made it into OUT %f\n", partialSum[0]);
 	    }
 	}
 }
@@ -86,11 +81,11 @@ int main(void) {
   printf("sum %f \n", out[numBlocks-1]);
   
 
-  //#if 0
+  #if 0
   for (int i = 0; i < size; i++){
   	printf("%f\n", out[i]);
   }
-  //#endif
+  #endif
 
   cudaFree(IN);
   cudaFree(OUT);
