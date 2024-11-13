@@ -29,11 +29,12 @@ __global__ void Reduction(float* IN, float* OUT, int size) {
     }
 }
 
-__global__ void single_thread(float* OUT, int numBlocks) {
+__global__ void single_thread(float* OUT, int numBlocks, float *RESULT) {
 	for (int i = 1; i < numBlocks; i++){
 		//printf("OUT: %f\n", OUT[i]);
 		OUT[i] += OUT[i-1];
 	}
+	RESULT[0] = OUT[numBlocks-1];
 }
 
 
@@ -54,31 +55,37 @@ int main(void) {
   int numBlocks = ceil(1.0 * size/BLOCKSIZE);
   printf("num blocks %d\n", numBlocks);
 
-  float *in, *out, *IN, *OUT;
+  float *in, *out, *IN, *OUT, *result, *RESULT;
 
   in = (float*)malloc(sizeof(float) * size);
   out = (float*)malloc(sizeof(float) * numBlocks);
+  result = (float*)malloc(sizeof(float));
   cudaMalloc(&IN, sizeof(float)*size);
   cudaMalloc(&OUT, sizeof(float)*numBlocks);
+  cudaMalloc(&RESULT, sizeof(float));
+
+  result[0] = 0.0;
 
 
   for (int i = 0; i < size; i++) {
-         in[i] = i;
+         in[i] = 1;
   }
 
   cudaMemcpy(IN, in, sizeof(float)*size, cudaMemcpyHostToDevice);
   cudaMemcpy(OUT, out, sizeof(float)*numBlocks, cudaMemcpyHostToDevice);
+  cudaMemcpy(RESULT, result, sizeof(float), cudaMemcpyHostToDevice);
 
 
   double t0 = get_clock();
   Reduction<<<numBlocks, BLOCKSIZE>>>(IN, OUT, size);
-  single_thread<<<1, 1>>>(OUT, numBlocks);
-  cudaMemcpy(out, OUT, sizeof(float)*numBlocks, cudaMemcpyDeviceToHost);
+  single_thread<<<1, 1>>>(OUT, numBlocks, RESULT);
+  //cudaMemcpy(out, OUT, sizeof(float)*numBlocks, cudaMemcpyDeviceToHost);
+  cudaMemcpy(result, RESULT, sizeof(float), cudaMemcpyDeviceToHost);
   cudaDeviceSynchronize();
   double t1 = get_clock();
 
   printf("time: %f s \n", (t1-t0));
-  printf("sum %f \n", out[numBlocks-1]);
+  printf("sum %f \n", result[0]);
   
 
   #if 0
