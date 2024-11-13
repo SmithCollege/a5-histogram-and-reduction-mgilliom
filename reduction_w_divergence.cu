@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include <sys/time.h>
 
-#define BLOCKSIZE 5
+#define BLOCKSIZE 256
 
 
 __global__ void Reduction(float* IN, float* OUT, int size) {
