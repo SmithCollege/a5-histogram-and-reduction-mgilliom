@@ -25,7 +25,7 @@ int main() {
   float sum;
 
   for (int i = 0; i < size; i++) {
-      x[i] = 1;
+      x[i] = i;
   }
 
   double t0 = get_clock();
